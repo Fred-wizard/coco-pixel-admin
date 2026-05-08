@@ -33,6 +33,21 @@ type Palette = {
   _count: { colors: number; projects: number; versions: number };
 };
 
+type ExportFile = {
+  id: string;
+  type: string;
+  status: string;
+  fileName: string;
+  error: string | null;
+  createdAt: string;
+  completedAt: string | null;
+  project: {
+    id: string;
+    name: string;
+    user: { email: string; name: string | null; planCode: string };
+  };
+};
+
 type Overview = {
   users: number;
   projects: number;
@@ -71,19 +86,34 @@ export default function AdminHome() {
   const [users, setUsers] = useState<User[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [palettes, setPalettes] = useState<Palette[]>([]);
+  const [exports, setExports] = useState<ExportFile[]>([]);
+  const [health, setHealth] = useState<"unknown" | "ok" | "failed">("unknown");
   const [isBusy, setIsBusy] = useState(false);
 
   async function loadDashboard() {
-    const [overviewData, usersData, projectsData, palettesData] = await Promise.all([
+    const [overviewData, usersData, projectsData, palettesData, exportsData] = await Promise.all([
       api<{ users: number; projects: number; versions: number; exports: number; palettes: number; failedExports: number }>("/api/admin/overview"),
       api<{ users: User[] }>("/api/admin/users"),
       api<{ projects: Project[] }>("/api/admin/projects"),
       api<{ palettes: Palette[] }>("/api/admin/palettes"),
+      api<{ exports: ExportFile[] }>("/api/admin/exports"),
     ]);
     setOverview(overviewData);
     setUsers(usersData.users);
     setProjects(projectsData.projects);
     setPalettes(palettesData.palettes);
+    setExports(exportsData.exports);
+    await checkHealth();
+  }
+
+  async function checkHealth() {
+    try {
+      await api("/api/health");
+      await api("/api/ready");
+      setHealth("ok");
+    } catch {
+      setHealth("failed");
+    }
   }
 
   async function login() {
@@ -148,6 +178,9 @@ export default function AdminHome() {
 
           <section className="rounded-lg border border-[#ded7c7] bg-[#fbfaf6] p-4">
             <h2 className="text-sm font-semibold">系统概览</h2>
+            <p className="mt-2 text-xs text-[#746b5d]">
+              服务状态：{health === "ok" ? "可用" : health === "failed" ? "异常" : "未检测"}
+            </p>
             <div className="mt-3 grid grid-cols-2 gap-2">
               {[
                 ["用户", overview?.users ?? 0],
@@ -230,6 +263,37 @@ export default function AdminHome() {
                   </div>
                 ))}
               </div>
+            </div>
+          </section>
+
+          <section className="rounded-lg border border-[#ded7c7] bg-[#fbfaf6] p-4">
+            <h2 className="text-sm font-semibold">导出队列</h2>
+            <div className="mt-3 overflow-auto">
+              <table className="w-full min-w-[760px] border-collapse text-sm">
+                <thead className="text-left text-xs text-[#746b5d]">
+                  <tr>
+                    <th className="border-b border-[#ded7c7] py-2">文件</th>
+                    <th className="border-b border-[#ded7c7] py-2">项目</th>
+                    <th className="border-b border-[#ded7c7] py-2">用户</th>
+                    <th className="border-b border-[#ded7c7] py-2">状态</th>
+                    <th className="border-b border-[#ded7c7] py-2">错误</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {exports.map((item) => (
+                    <tr key={item.id}>
+                      <td className="border-b border-[#eee7da] py-2">
+                        <p className="font-medium">{item.fileName}</p>
+                        <p className="text-xs text-[#746b5d]">{item.type} · {new Date(item.createdAt).toLocaleString("zh-CN")}</p>
+                      </td>
+                      <td className="border-b border-[#eee7da] py-2">{item.project.name}</td>
+                      <td className="border-b border-[#eee7da] py-2">{item.project.user.email}</td>
+                      <td className="border-b border-[#eee7da] py-2">{item.status}</td>
+                      <td className="border-b border-[#eee7da] py-2">{item.error || "-"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </section>
         </section>
